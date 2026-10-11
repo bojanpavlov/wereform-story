@@ -14,7 +14,8 @@ MOCKUP = os.path.join(HERE, "assets", "mockup.png")
 TABLE_X = (158, 333, 689, 910)
 TABLE_TOP = 628
 HEADER_H = 141
-ROW_H = 125
+ROW_H = 125  # used when there are few rows
+TABLE_MAX_BOTTOM = 1620  # the footer "RE:FORM" starts around y=1690
 DATE_CENTER = (540, 478)
 ERASE_TABLE = (150, 620, 930, 1210)  # covers the old table; table is sized to fit below
 ERASE_DATE = (340, 440, 740, 515)
@@ -51,7 +52,7 @@ def date_text(day):
 
 
 def render(day, kind, slots, out_path):
-    """slots: [{"time", "free"}] for one kind, already sorted by time."""
+    """slots: [{"time", "free", "kind"}] sorted by time. kind sets the class name per row."""
     img = Image.open(MOCKUP).convert("RGB")
     draw = ImageDraw.Draw(img)
     bg = img.getpixel((1000, 1400))
@@ -59,20 +60,22 @@ def render(day, kind, slots, out_path):
     draw.rectangle(ERASE_TABLE, fill=bg)
     draw.rectangle(ERASE_DATE, fill=bg)
 
-    regular = load_font(FONT_REGULAR, FONT_SIZE)
-    bold = load_font(FONT_BOLD, FONT_SIZE)
+    rows = len(slots)
+    row_h = min(ROW_H, (TABLE_MAX_BOTTOM - TABLE_TOP - HEADER_H) // rows)
+    font_size = FONT_SIZE if row_h >= 110 else 32
+    regular = load_font(FONT_REGULAR, font_size)
+    bold = load_font(FONT_BOLD, font_size)
 
     draw.multiline_text(DATE_CENTER, date_text(day), font=regular, fill="black",
                         anchor="mm", align="center")
 
     x0, x1, x2, x3 = TABLE_X
-    rows = len(slots)
-    bottom = TABLE_TOP + HEADER_H + rows * ROW_H
+    bottom = TABLE_TOP + HEADER_H + rows * row_h
     draw.rectangle((x0, TABLE_TOP, x3, TABLE_TOP + HEADER_H), fill="white")
     for x in TABLE_X:
         draw.line([(x, TABLE_TOP), (x, bottom)], fill="black", width=2)
     horizontal_ys = [TABLE_TOP, TABLE_TOP + HEADER_H]
-    horizontal_ys += [TABLE_TOP + HEADER_H + ROW_H * (i + 1) for i in range(rows)]
+    horizontal_ys += [TABLE_TOP + HEADER_H + row_h * (i + 1) for i in range(rows)]
     for y in horizontal_ys:
         draw.line([(x0, y), (x3, y)], fill="black", width=2)
 
@@ -85,10 +88,10 @@ def render(day, kind, slots, out_path):
     draw.multiline_text(center(x2, x3, *header_y), "Слободни\nместа", font=bold, fill="black", anchor="mm", align="center")
 
     for i, slot in enumerate(slots):
-        top = TABLE_TOP + HEADER_H + i * ROW_H
-        row_y = (top, top + ROW_H)
+        top = TABLE_TOP + HEADER_H + i * row_h
+        row_y = (top, top + row_h)
         draw.multiline_text(center(x0, x1, *row_y), slot["time"], font=regular, fill="black", anchor="mm", align="center")
-        draw.multiline_text(center(x1, x2, *row_y), CLASS_NAME[kind], font=regular, fill="black", anchor="mm", align="center")
+        draw.multiline_text(center(x1, x2, *row_y), CLASS_NAME[slot["kind"]], font=regular, fill="black", anchor="mm", align="center")
         draw.multiline_text(center(x2, x3, *row_y), str(slot["free"]), font=regular, fill="black", anchor="mm", align="center")
 
     img.save(out_path, "PNG")

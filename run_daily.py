@@ -59,7 +59,9 @@ def main():
             return 0
         day, kind = due
 
-    slots = fetch_availability.slots_for_day(fetch_availability.fetch_calendar(), day, kind)
+    # The morning story also lists the afternoon slots; the afternoon story lists only its own.
+    kind_filter = None if kind == "morning" else kind
+    slots = fetch_availability.slots_for_day(fetch_availability.fetch_calendar(), day, kind_filter)
     if not slots:
         print(f"No free {kind} slots on {day.isoformat()}; no story posted.")
         return 0
