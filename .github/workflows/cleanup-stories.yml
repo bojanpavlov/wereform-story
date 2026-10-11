@@ -1,0 +1,42 @@
+name: Remove story images after 24 hours
+
+on:
+  schedule:
+    # Hourly, so an image is removed within about an hour of its 24-hour mark.
+    - cron: "15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Share the group with the daily story job so the two never push at the same time.
+concurrency:
+  group: daily-story
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Delete images older than 24 hours
+        run: python cleanup_stories.py
+
+      - name: Commit removals
+        run: |
+          if [ -z "$(git status --porcelain docs/stories)" ]; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git config user.name "wereform-story bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A docs/stories
+          git commit -m "Remove story images older than 24 hours"
+          git push
