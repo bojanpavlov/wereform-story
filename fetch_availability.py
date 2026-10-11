@@ -32,7 +32,7 @@ def kind_for_hour(hour):
 
 
 def fetch_calendar():
-    """Return {"YYYY-MM-DD": {"HH:MM": [entry, ...]}} for the next months."""
+    """Return the calendar data: "slots" (open slots) and "occupied" (booked-out slots), keyed by date."""
     params = {
         "action": "wpamelia_api",
         "call": "/slots",
@@ -52,13 +52,22 @@ def fetch_calendar():
         body = json.load(resp)
     if "data" not in body or "slots" not in body["data"]:
         raise RuntimeError(f"Unexpected response from Amelia: {str(body)[:300]}")
-    return body["data"]["slots"]
+    return body["data"]
+
+
+def is_open_day(calendar, day):
+    """A day is open for booking when it has any slot, free or fully booked.
+
+    Closed days (for example holidays) have no entry at all in the calendar.
+    """
+    key = day.isoformat()
+    return key in calendar.get("slots", {}) or key in calendar.get("occupied", {})
 
 
 def slots_for_day(calendar, day, kind=None):
     """Published slots for one day: [{"time", "hour", "free", "kind"}], sorted by time."""
     result = []
-    for time_str, entries in calendar.get(day.isoformat(), {}).items():
+    for time_str, entries in calendar.get("slots", {}).get(day.isoformat(), {}).items():
         hour = int(time_str.split(":")[0])
         slot_kind = kind_for_hour(hour)
         if slot_kind is None or (kind and slot_kind != kind):
@@ -76,7 +85,11 @@ def main(argv):
         return 2
     day = date.fromisoformat(argv[0])
     kind = argv[1] if len(argv) > 1 else None
-    slots = slots_for_day(fetch_calendar(), day, kind)
+    calendar = fetch_calendar()
+    if not is_open_day(calendar, day):
+        print(f"{day.isoformat()} is a closed day (no bookable slots).")
+        return 0
+    slots = slots_for_day(calendar, day, kind)
     print(json.dumps(slots, ensure_ascii=False, indent=2))
     return 0
 

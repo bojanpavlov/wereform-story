@@ -59,9 +59,14 @@ def main():
             return 0
         day, kind = due
 
+    calendar = fetch_availability.fetch_calendar()
+    if not fetch_availability.is_open_day(calendar, day):
+        print(f"{day.isoformat()} is a closed day (holiday or not open for booking); no story posted.")
+        return 0
+
     # The morning story also lists the afternoon slots; the afternoon story lists only its own.
     kind_filter = None if kind == "morning" else kind
-    slots = fetch_availability.slots_for_day(fetch_availability.fetch_calendar(), day, kind_filter)
+    slots = fetch_availability.slots_for_day(calendar, day, kind_filter)
     if not slots:
         print(f"No free {kind} slots on {day.isoformat()}; no story posted.")
         return 0

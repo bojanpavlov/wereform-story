@@ -9,6 +9,8 @@ The workflow posts two stories to the Instagram Business account `wereform_mk`:
 
 Slots between 10:00 and 15:00 are never shown.
 
+Days the booking calendar doesn't open (holidays and other closed days) get no story. A day counts as open if it has any slot, free or fully booked.
+
 ## 1. Create the GitHub repo
 
 1. On github.com, create a new **private** repo named `wereform-story`.
