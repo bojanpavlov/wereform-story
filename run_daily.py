@@ -1,12 +1,13 @@
 """Decide which story is due now, render it, and print its path.
 
 Schedule (Skopje time):
-  19:00 -> morning sessions for TOMORROW
-  14:00 -> afternoon sessions for TODAY
+  19:30 -> morning sessions for TOMORROW
+  10:00 -> afternoon sessions for TODAY
 
 GitHub cron runs in UTC and does not follow daylight saving, so the workflow
-fires at both possible UTC hours. This script exits quietly unless the Skopje
-hour matches one of the two posting times.
+fires at both possible UTC times. This script exits quietly unless the Skopje
+hour matches one of the two posting times. Matching on the hour leaves room
+for GitHub starting a run a few minutes late.
 
 Manual run: FORCE_KIND=morning FORCE_DATE=2026-10-13 python run_daily.py
 Writes the image to docs/stories/ and prints `file=<path>` for the workflow.
@@ -41,7 +42,7 @@ def due_story(now):
     """Return (day, kind) if a story is due at this Skopje time, else None."""
     if now.hour == 19:
         return now.date() + timedelta(days=1), "morning"
-    if now.hour == 14:
+    if now.hour == 10:
         return now.date(), "afternoon"
     return None
 

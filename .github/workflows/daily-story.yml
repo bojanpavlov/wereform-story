@@ -2,13 +2,13 @@ name: Daily availability story
 
 on:
   schedule:
-    # GitHub cron is UTC. 19:00 Skopje = 17:00 UTC (summer) or 18:00 UTC (winter).
-    # 14:00 Skopje = 12:00 UTC (summer) or 13:00 UTC (winter).
+    # GitHub cron is UTC. 19:30 Skopje = 17:30 UTC (summer) or 18:30 UTC (winter).
+    # 10:00 Skopje = 08:00 UTC (summer) or 09:00 UTC (winter).
     # run_daily.py skips the run when the Skopje hour does not match.
-    - cron: "0 17 * * *"
-    - cron: "0 18 * * *"
-    - cron: "0 12 * * *"
-    - cron: "0 13 * * *"
+    - cron: "30 17 * * *"
+    - cron: "30 18 * * *"
+    - cron: "0 8 * * *"
+    - cron: "0 9 * * *"
   workflow_dispatch:
     inputs:
       kind:
