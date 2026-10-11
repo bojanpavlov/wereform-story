@@ -32,7 +32,7 @@ Slots between 10:00 and 15:00 are never shown.
 1. Go to developers.facebook.com, create an app of type *Business*.
 2. Add the **Instagram** product (Instagram API with Facebook Login or Instagram Platform, whichever Meta offers for your app).
 3. Make sure `wereform_mk` is an Instagram **Business** account linked to a Facebook Page where you are an admin.
-4. In Meta Business Manager: **System Users** → create a system user with admin access to the app and the Page → generate a token with permissions to publish content to Instagram (`instagram_content_publish` and the Page/Instagram permissions listed in the app).
+4. In Meta Business Manager: **System Users** → create a system user and give it access only to the app, the studio Page, and the `wereform_mk` Instagram account. Generate a token with the content permissions from the app's *API setup with Facebook login* screen: `instagram_basic`, `instagram_content_publishing`, `pages_read_engagement`, `pages_show_list`, and `business_management`. Set expiry to **Never**.
 5. Copy the token and the Instagram account ID. Save them as the secrets `IG_ACCESS_TOKEN` and `IG_USER_ID`.
 
 Do not put the token in code or in this repo.

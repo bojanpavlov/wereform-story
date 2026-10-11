@@ -17,6 +17,7 @@ from datetime import date
 BASE_URL = os.environ.get("WEREFORM_BASE_URL", "https://wereform.mk")
 MAX_CAPACITY = int(os.environ.get("MAX_CAPACITY", "5"))
 GROUP_SERVICE_ID = os.environ.get("AMELIA_GROUP_SERVICE_ID", "3")
+USER_AGENT = "wereform-story/1.0 (+https://github.com/bojanpavlov/wereform-story)"
 LOCATION_ID = "1"
 PROVIDER_ID = "1"
 
@@ -45,7 +46,9 @@ def fetch_calendar():
         "persons": "1",
     }
     url = f"{BASE_URL}/wp-admin/admin-ajax.php?{urllib.parse.urlencode(params)}"
-    with urllib.request.urlopen(url, timeout=30) as resp:
+    # The site rejects Python's default user agent with HTTP 406.
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=30) as resp:
         body = json.load(resp)
     if "data" not in body or "slots" not in body["data"]:
         raise RuntimeError(f"Unexpected response from Amelia: {str(body)[:300]}")
