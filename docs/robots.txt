@@ -1,0 +1,12 @@
+# Story images are for Instagram only. Keep search engines out.
+User-agent: Googlebot
+Disallow: /
+
+User-agent: Googlebot-Image
+Disallow: /
+
+User-agent: Bingbot
+Disallow: /
+
+User-agent: *
+Allow: /
