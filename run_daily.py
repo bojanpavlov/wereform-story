@@ -92,7 +92,9 @@ def main():
         print(f"  {s['time']}  {s['kind']:<9}  {s['free']} free")
 
     os.makedirs(STORIES_DIR, exist_ok=True)
-    out_path = os.path.join(STORIES_DIR, f"{day.isoformat()}-{kind}.png")
+    # The check time is in the name, so a new image never reuses an old URL that
+    # GitHub Pages may still have cached.
+    out_path = os.path.join(STORIES_DIR, f"{day.isoformat()}-{kind}-{now.strftime('%H%M')}.png")
     make_story.render(day, kind, slots, out_path)
     rel = os.path.relpath(out_path, HERE)
     print(f"Rendered {rel} with {len(slots)} slot(s).")

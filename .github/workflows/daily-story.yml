@@ -62,8 +62,12 @@ jobs:
           git config user.name "wereform-story bot"
           git config user.email "actions@users.noreply.github.com"
           git add "${{ steps.render.outputs.file }}"
-          git commit -m "Story: ${{ steps.render.outputs.file }}"
-          git push
+          if git diff --cached --quiet; then
+            echo "Image already committed; nothing to commit."
+          else
+            git commit -m "Story: ${{ steps.render.outputs.file }}"
+            git push
+          fi
 
       - name: Publish to Instagram
         if: steps.render.outputs.file != ''
