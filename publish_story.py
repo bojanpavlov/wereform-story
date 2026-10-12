@@ -11,6 +11,8 @@ Needed environment variables:
   GRAPH_VERSION     optional, default v21.0 (check Meta's changelog before first run)
 
 Usage: python publish_story.py docs/stories/2026-10-13-morning.png
+With POST_KIND=morning|afternoon set (scheduled runs), waits for that story's
+post time (Skopje) before publishing.
 """
 import json
 import os
@@ -19,9 +21,27 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
+
+from run_daily import POST_TIME, skopje_now
 
 GRAPH_VERSION = os.environ.get("GRAPH_VERSION", "v21.0")
 GRAPH = f"https://graph.facebook.com/{GRAPH_VERSION}"
+MAX_WAIT_SECONDS = 15 * 60
+
+
+def wait_until_post_time(kind):
+    """Sleep until the post time for this kind. Returns at once if it has already passed."""
+    hour, minute = POST_TIME[kind]
+    now = skopje_now(datetime.now(timezone.utc))
+    post_at = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    remaining = (post_at - now).total_seconds()
+    if remaining <= 0:
+        print(f"Post time {hour:02d}:{minute:02d} has already passed; publishing now.")
+        return
+    remaining = min(remaining, MAX_WAIT_SECONDS)
+    print(f"Waiting {int(remaining)} seconds until {hour:02d}:{minute:02d} Skopje to publish.")
+    time.sleep(remaining)
 
 
 def public_url(local_path):
@@ -91,6 +111,8 @@ def main(argv):
     token = os.environ["IG_ACCESS_TOKEN"]
     url = public_url(argv[0])
     wait_until_live(url)
+    if os.environ.get("POST_KIND"):
+        wait_until_post_time(os.environ["POST_KIND"])
     media_id = publish(url, ig_user_id, token)
     print(f"Published story {media_id} from {url}")
     return 0

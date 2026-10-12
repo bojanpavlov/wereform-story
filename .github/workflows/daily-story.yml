@@ -2,13 +2,14 @@ name: Daily availability story
 
 on:
   schedule:
-    # GitHub cron is UTC. 19:30 Skopje = 17:30 UTC (summer) or 18:30 UTC (winter).
-    # 10:00 Skopje = 08:00 UTC (summer) or 09:00 UTC (winter).
-    # run_daily.py skips the run when the Skopje hour does not match.
-    - cron: "30 17 * * *"
-    - cron: "30 18 * * *"
-    - cron: "0 8 * * *"
-    - cron: "0 9 * * *"
+    # GitHub cron is UTC. Each run checks the slots 5 minutes before the post time.
+    # 19:25 Skopje = 17:25 UTC (summer) or 18:25 UTC (winter): morning check, posts 19:30.
+    # 09:55 Skopje = 07:55 UTC (summer) or 08:55 UTC (winter): afternoon check, posts 10:00.
+    # run_daily.py skips a run whose Skopje time is outside its check window.
+    - cron: "25 17 * * *"
+    - cron: "25 18 * * *"
+    - cron: "55 7 * * *"
+    - cron: "55 8 * * *"
   workflow_dispatch:
     inputs:
       kind:
@@ -19,6 +20,10 @@ on:
       date:
         description: "Class date, YYYY-MM-DD"
         required: true
+      publish_delay_minutes:
+        description: "Minutes to wait between the slot check and publishing (0 = publish at once)"
+        required: false
+        default: "0"
 
 permissions:
   contents: write
@@ -66,4 +71,12 @@ jobs:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           PAGES_BASE_URL: ${{ vars.PAGES_BASE_URL }}
-        run: python publish_story.py "${{ steps.render.outputs.file }}"
+          # Set only on scheduled runs: the publish waits for the post time.
+          POST_KIND: ${{ steps.render.outputs.kind }}
+          DELAY_MINUTES: ${{ github.event.inputs.publish_delay_minutes }}
+        run: |
+          if [ -n "$DELAY_MINUTES" ] && [ "$DELAY_MINUTES" -gt 0 ]; then
+            echo "Slots were checked; waiting $DELAY_MINUTES minute(s) before publishing"
+            sleep $((DELAY_MINUTES * 60))
+          fi
+          python publish_story.py "${{ steps.render.outputs.file }}"

@@ -4,8 +4,8 @@ The workflow posts two stories to the Instagram Business account `wereform_mk`:
 
 | Story | Posted at (Skopje) | Covers |
 |---|---|---|
-| Morning | 19:30 the day before | Tomorrow's morning slots (06:00 to 09:59) |
-| Afternoon | 10:00 the same day | Today's afternoon slots (after 15:00) |
+| Morning | 19:30 the day before (slots checked at 19:25) | Tomorrow's morning slots (06:00 to 09:59) |
+| Afternoon | 10:00 the same day (slots checked at 09:55) | Today's afternoon slots (after 15:00) |
 
 Slots between 10:00 and 15:00 are never shown.
 
@@ -42,13 +42,13 @@ Do not put the token in code or in this repo.
 ## 3. Test once
 
 1. In GitHub: **Actions → Daily availability story → Run workflow**.
-2. Choose `kind` = `morning`, and a `date` that has free morning slots.
+2. Choose `kind` = `morning`, a `date` that has free morning slots, and `publish_delay_minutes` (0 publishes at once; 5 waits five minutes after the slots are checked).
 3. The run commits the image to `docs/stories/`, then publishes it. Check the story in the Instagram app.
-4. If the run passes, it will repeat at 19:30 and 10:00 every day.
+4. If the run passes, it will repeat every day: checks at 19:25 and 09:55, posts at 19:30 and 10:00.
 
 ## What runs when
 
-GitHub cron uses UTC and does not know about daylight saving. The workflow fires at both UTC times for 19:30 and 10:00, and `run_daily.py` exits quietly unless the Skopje hour matches. GitHub can also start scheduled runs a few minutes late.
+GitHub cron uses UTC and does not know about daylight saving. The workflow fires at both UTC times for each check (19:25 and 09:55), and `run_daily.py` exits quietly unless the Skopje hour matches. GitHub can also start scheduled runs a few minutes late.
 
 ## Settings to check
 

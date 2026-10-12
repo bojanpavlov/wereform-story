@@ -1,15 +1,22 @@
-"""Decide which story is due now, render it, and print its path.
+"""Check the slots and render the story. Publishing happens in publish_story.py.
 
-Schedule (Skopje time):
-  19:30 -> morning sessions for TOMORROW
-  10:00 -> afternoon sessions for TODAY
+Each scheduled run starts 5 minutes before the post time:
+
+  19:25 -> check the slots for TOMORROW's morning sessions, render, post at 19:30
+  09:55 -> check the slots for TODAY's afternoon sessions, render, post at 10:00
+
+The slots are read fresh from the booking calendar at the check time. The
+publish step (publish_story.py) waits for the post time after the image is
+committed, so the story goes out at 19:30 or 10:00 with data that is about
+5 minutes old.
 
 GitHub cron runs in UTC and does not follow daylight saving, so the workflow
 fires at both possible UTC times. This script exits quietly unless the Skopje
-hour matches one of the two posting times. Matching on the hour leaves room
-for GitHub starting a run a few minutes late.
+time falls in a check window. The windows are wide enough to allow for GitHub
+starting a run a few minutes late.
 
 Manual run: FORCE_KIND=morning FORCE_DATE=2026-10-13 python run_daily.py
+A manual run checks, renders and publishes at once, without waiting for a post time.
 Writes the image to docs/stories/ and prints `file=<path>` for the workflow.
 """
 import os
@@ -21,6 +28,9 @@ import make_story
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STORIES_DIR = os.path.join(HERE, "docs", "stories")
+
+# Post time for each story (Skopje). The check runs about 5 minutes before it.
+POST_TIME = {"morning": (19, 30), "afternoon": (10, 0)}
 
 
 def skopje_now(utc_now):
@@ -39,10 +49,13 @@ def _last_sunday(year, month):
 
 
 def due_story(now):
-    """Return (day, kind) if a story is due at this Skopje time, else None."""
-    if now.hour == 19:
+    """Return (day, kind) if a check is due at this Skopje time, else None.
+
+    The morning check starts at 19:20 (for tomorrow), the afternoon check at 09:50 (for today).
+    """
+    if now.hour == 19 and now.minute >= 20:
         return now.date() + timedelta(days=1), "morning"
-    if now.hour == 10:
+    if now.hour == 9 and now.minute >= 50:
         return now.date(), "afternoon"
     return None
 
@@ -50,14 +63,17 @@ def due_story(now):
 def main():
     forced_kind = os.environ.get("FORCE_KIND")
     forced_date = os.environ.get("FORCE_DATE")
+    now = skopje_now(datetime.now(timezone.utc))
     if forced_kind and forced_date:
         day, kind = date.fromisoformat(forced_date), forced_kind
+        scheduled = False
     else:
-        due = due_story(skopje_now(datetime.now(timezone.utc)))
+        due = due_story(now)
         if due is None:
-            print("Not a posting time in Skopje; nothing to do.")
+            print("Not a check time in Skopje; nothing to do.")
             return 0
         day, kind = due
+        scheduled = True
 
     calendar = fetch_availability.fetch_calendar()
     if not fetch_availability.is_open_day(calendar, day):
@@ -71,16 +87,22 @@ def main():
         print(f"No free {kind} slots on {day.isoformat()}; no story posted.")
         return 0
 
+    print(f"Checked at {now.strftime('%H:%M')} Skopje, {day.isoformat()} {kind}:")
+    for s in slots:
+        print(f"  {s['time']}  {s['kind']:<9}  {s['free']} free")
+
     os.makedirs(STORIES_DIR, exist_ok=True)
     out_path = os.path.join(STORIES_DIR, f"{day.isoformat()}-{kind}.png")
     make_story.render(day, kind, slots, out_path)
     rel = os.path.relpath(out_path, HERE)
     print(f"Rendered {rel} with {len(slots)} slot(s).")
 
+    # The publish step waits for the post time, after the image is committed.
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
         with open(github_output, "a") as f:
             f.write(f"file={rel}\n")
+            f.write(f"kind={kind if scheduled else ''}\n")
     return 0
 
 
