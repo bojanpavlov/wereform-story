@@ -10,14 +10,15 @@ from PIL import Image, ImageDraw, ImageFont
 HERE = os.path.dirname(os.path.abspath(__file__))
 MOCKUP = os.path.join(HERE, "assets", "mockup.png")
 
-# Table geometry, measured from the mockup.
-TABLE_X = (158, 333, 689, 910)
+# Column edges. Wider than the mockup's table so the text has room on every font.
+TABLE_X = (90, 300, 690, 990)
+CELL_PAD = 18  # minimum space between text and a cell border
 TABLE_TOP = 628
 HEADER_H = 141
 ROW_H = 125  # used when there are few rows
 TABLE_MAX_BOTTOM = 1620  # the footer "RE:FORM" starts around y=1690
 DATE_CENTER = (540, 478)
-ERASE_TABLE = (150, 620, 930, 1210)  # covers the old table; table is sized to fit below
+ERASE_TABLE = (150, 620, 930, 1210)  # covers the table baked into the mockup
 ERASE_DATE = (340, 440, 740, 515)
 
 FONT_REGULAR = [
@@ -47,6 +48,11 @@ def load_font(candidates, size):
     raise FileNotFoundError(f"No font found in {candidates}")
 
 
+def _text_width(draw, text, font):
+    left, _, right, _ = draw.multiline_textbbox((0, 0), text, font=font, align="center")
+    return right - left
+
+
 def date_text(day):
     return f"{day.day} {MONTHS_MK[day.month]}"
 
@@ -63,10 +69,26 @@ def render(day, kind, slots, out_path):
     rows = len(slots)
     row_h = min(ROW_H, (TABLE_MAX_BOTTOM - TABLE_TOP - HEADER_H) // rows)
     font_size = FONT_SIZE if row_h >= 110 else 32
-    regular = load_font(FONT_REGULAR, font_size)
-    bold = load_font(FONT_BOLD, font_size)
+    headers = ["Време", "Час", "Слободни\nместа"]
+    columns = [
+        [slot["time"] for slot in slots],
+        [CLASS_NAME[slot["kind"]] for slot in slots],
+        [str(slot["free"]) for slot in slots],
+    ]
+    # Fonts differ in width between machines, so shrink the text until every cell fits.
+    while True:
+        regular = load_font(FONT_REGULAR, font_size)
+        bold = load_font(FONT_BOLD, font_size)
+        fits = all(
+            _text_width(draw, text, font) <= TABLE_X[i + 1] - TABLE_X[i] - 2 * CELL_PAD
+            for i in range(3)
+            for text, font in [(headers[i], bold)] + [(t, regular) for t in columns[i]]
+        )
+        if fits or font_size <= 20:
+            break
+        font_size -= 2
 
-    draw.multiline_text(DATE_CENTER, date_text(day), font=regular, fill="black",
+    draw.multiline_text(DATE_CENTER, date_text(day), font=load_font(FONT_REGULAR, FONT_SIZE), fill="black",
                         anchor="mm", align="center")
 
     x0, x1, x2, x3 = TABLE_X
