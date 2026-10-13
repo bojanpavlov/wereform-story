@@ -1,4 +1,5 @@
 """Delete story images 24 hours after they were committed (the story is published then).
+Also deletes the published/ markers after a week; they only matter on the day itself.
 
 Instagram fetches each image once, when the story is published, so the image is
 no longer needed after the story's 24-hour life. Once the file is removed from
@@ -13,8 +14,11 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STORIES_GLOB = os.path.join(HERE, "docs", "stories", "*.png")
-MAX_AGE_SECONDS = 24 * 60 * 60
+# (files, maximum age in seconds)
+RULES = [
+    (os.path.join(HERE, "docs", "stories", "*.png"), 24 * 60 * 60),
+    (os.path.join(HERE, "published", "*.txt"), 7 * 24 * 60 * 60),
+]
 
 
 def committed_at(rel_path):
@@ -29,19 +33,20 @@ def committed_at(rel_path):
 def main():
     now = time.time()
     removed = []
-    for path in sorted(glob.glob(STORIES_GLOB)):
-        rel = os.path.relpath(path, HERE)
-        added = committed_at(rel)
-        if added is None:
-            continue
-        if now - added > MAX_AGE_SECONDS:
-            os.remove(path)
-            removed.append(rel)
+    for pattern, max_age in RULES:
+        for path in sorted(glob.glob(pattern)):
+            rel = os.path.relpath(path, HERE)
+            added = committed_at(rel)
+            if added is None:
+                continue
+            if now - added > max_age:
+                os.remove(path)
+                removed.append(rel)
 
     if removed:
         print("Removed:\n  " + "\n  ".join(removed))
     else:
-        print("Nothing older than 24 hours.")
+        print("Nothing to remove.")
     return 0
 
 

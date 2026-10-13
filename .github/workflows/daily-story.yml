@@ -1,15 +1,8 @@
 name: Daily availability story
 
 on:
-  schedule:
-    # GitHub cron is UTC. Each run checks the slots 5 minutes before the post time.
-    # 19:25 Skopje = 17:25 UTC (summer) or 18:25 UTC (winter): morning check, posts 19:30.
-    # 09:55 Skopje = 07:55 UTC (summer) or 08:55 UTC (winter): afternoon check, posts 10:00.
-    # run_daily.py skips a run whose Skopje time is outside its check window.
-    - cron: "25 17 * * *"
-    - cron: "25 18 * * *"
-    - cron: "55 7 * * *"
-    - cron: "55 8 * * *"
+  # Main trigger: an outside scheduler (cron-job.org) starts this workflow at
+  # 19:25 and 09:55 Skopje time with only `kind` set. See SETUP.md.
   workflow_dispatch:
     inputs:
       kind:
@@ -18,16 +11,30 @@ on:
         type: choice
         options: [morning, afternoon]
       date:
-        description: "Class date, YYYY-MM-DD"
-        required: true
+        description: "Class date, YYYY-MM-DD. Leave empty for the scheduled story (tomorrow for morning, today for afternoon)."
+        required: false
+        default: ""
       publish_delay_minutes:
-        description: "Minutes to wait between the slot check and publishing (0 = publish at once)"
+        description: "Only with a date: minutes to wait between the slot check and publishing (0 = publish at once)"
         required: false
         default: "0"
+  # Backup only. GitHub's own timer often starts runs late or drops them, so
+  # these are spread out. A run that finds the story already published does
+  # nothing; a late one checks fresh and posts. Times are UTC:
+  # morning 19:25 Skopje = 17:25 (summer) / 18:25 (winter), then an hour later.
+  # afternoon 09:55 Skopje = 07:55 (summer) / 08:55 (winter), then an hour later.
+  schedule:
+    - cron: "25 17 * * *"
+    - cron: "25 18 * * *"
+    - cron: "25 19 * * *"
+    - cron: "55 7 * * *"
+    - cron: "55 8 * * *"
+    - cron: "55 9 * * *"
 
 permissions:
   contents: write
 
+# One story run at a time, so a second run always sees the first one's marker.
 concurrency:
   group: daily-story
   cancel-in-progress: false
@@ -47,8 +54,10 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-dejavu-core
           pip install -r requirements.txt
+          git config user.name "wereform-story bot"
+          git config user.email "actions@users.noreply.github.com"
 
-      - name: Render story
+      - name: Check slots and render story
         id: render
         env:
           FORCE_KIND: ${{ github.event.inputs.kind }}
@@ -59,13 +68,12 @@ jobs:
       - name: Commit story image
         if: steps.render.outputs.file != ''
         run: |
-          git config user.name "wereform-story bot"
-          git config user.email "actions@users.noreply.github.com"
           git add "${{ steps.render.outputs.file }}"
           if git diff --cached --quiet; then
             echo "Image already committed; nothing to commit."
           else
             git commit -m "Story: ${{ steps.render.outputs.file }}"
+            git pull --rebase
             git push
           fi
 
@@ -75,12 +83,22 @@ jobs:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           PAGES_BASE_URL: ${{ vars.PAGES_BASE_URL }}
-          # Set only on scheduled runs: the publish waits for the post time.
+          # Empty on manual runs with a date; otherwise the publish waits for the post time.
           POST_KIND: ${{ steps.render.outputs.kind }}
           DELAY_MINUTES: ${{ github.event.inputs.publish_delay_minutes }}
         run: |
-          if [ -n "$DELAY_MINUTES" ] && [ "$DELAY_MINUTES" -gt 0 ]; then
+          if [ -z "$POST_KIND" ] && [ -n "$DELAY_MINUTES" ] && [ "$DELAY_MINUTES" -gt 0 ]; then
             echo "Slots were checked; waiting $DELAY_MINUTES minute(s) before publishing"
             sleep $((DELAY_MINUTES * 60))
           fi
           python publish_story.py "${{ steps.render.outputs.file }}"
+
+      - name: Record that the story is published
+        if: steps.render.outputs.file != ''
+        run: |
+          mkdir -p published
+          date -u +%Y-%m-%dT%H:%M:%SZ > "published/${{ steps.render.outputs.marker }}.txt"
+          git add published
+          git commit -m "Published: ${{ steps.render.outputs.marker }}"
+          git pull --rebase
+          git push

@@ -26,18 +26,20 @@ Local folder: `~/Projects/wereform-story`. It is separate from the WordPress rep
 - Slots between 10:00 and 15:00 are never shown.
 - Days the booking calendar doesn't open (holidays and other closed days) get no story. A day counts as open if it has any slot, free or fully booked. Example: 12 October 2026 is a holiday and has no story.
 - A slot with no bookings counts as 5 free places (`MAX_CAPACITY`). Group service ID is 3.
-- The schedule runs in UTC, so both UTC times are listed for each check. `run_daily.py` skips a run outside its check window.
+- **Triggers.** GitHub's own timer is unreliable here (runs hours late or dropped), so cron-job.org starts the workflow at 19:25 and 09:55 Europe/Skopje with only `kind` set. GitHub's timer stays as a backup at the same time and one and two hours later.
+- **No duplicates.** After publishing, the workflow writes `published/<date>-<kind>.txt`. Scheduled and externally triggered runs skip when it exists. A manual run with a `date` ignores it.
+- **Late runs still post.** A backup run inside its window (morning 19:20 to 21:30, afternoon 09:50 to 12:00) checks fresh and posts if the story isn't out.
 
 ## How it works
 
 | File | Job |
 |---|---|
 | `fetch_availability.py` | Reads the calendar from `wereform.mk` (`admin-ajax.php?action=wpamelia_api&call=/slots`). Sends a project user agent, since the site returns HTTP 406 to Python's default. |
-| `run_daily.py` | Decides which story is due, checks the slots, renders the image, and writes the file name to the workflow output. |
+| `run_daily.py` | Works out which story this run is for (external trigger, GitHub backup, or manual), skips if it's already published, checks the slots, renders the image. |
 | `make_story.py` | Draws the image on `assets/mockup.png`. It erases the old table and date, then draws the date and a table with one row per slot. |
 | `publish_story.py` | Waits for the image URL on GitHub Pages, waits for the post time on scheduled runs, then creates and publishes the story through the Instagram Graph API. |
-| `cleanup_stories.py` | Removes story images 24 hours after they were committed. Runs hourly through its own workflow. |
-| `.github/workflows/daily-story.yml` | Daily story job. Scheduled checks plus a manual run with `kind`, `date`, and `publish_delay_minutes` inputs. |
+| `cleanup_stories.py` | Removes story images 24 hours after they were committed, and `published/` markers after a week. Runs hourly through its own workflow. |
+| `.github/workflows/daily-story.yml` | Daily story job. Started by cron-job.org (`kind` only), by GitHub's backup timer, or by hand (`kind` + `date`, optional `publish_delay_minutes`). |
 | `.github/workflows/cleanup-stories.yml` | Hourly cleanup. |
 | `docs/` | GitHub Pages site. `docs/stories/` holds the images. `robots.txt` blocks Google and Bing. `index.html` has a noindex tag. |
 | `SETUP.md` | Setup steps for GitHub, Pages, Meta, and the token. |
@@ -72,7 +74,8 @@ Local folder: `~/Projects/wereform-story`. It is separate from the WordPress rep
 - **Mockup:** the background is the exported mockup with the old table erased. A clean export would be better.
 - **Public repo:** the file names of the story images are visible on GitHub. Google can index the repo page, which the robots rules can't stop.
 - **Old stories:** Instagram can't edit or delete a story through the API. A story published with old data has to be removed by hand in the app.
-- **Late runs:** GitHub can start scheduled runs a few minutes late. If a run starts after its check window, it skips.
+- **Snapshot:** a story shows the numbers at post time. Bookings made afterwards aren't reflected; the site itself is not cached (`no-store`).
+- **Trigger token:** the cron-job.org jobs use a fine-grained GitHub token (Actions read/write on this repo). It expires and has to be renewed.
 - **Repo history:** deleted images stay in git history. Clearing that would mean rewriting history, which hasn't been done.
 - **Live data:** the calendar only shows the next couple of months. Check the live response after any change to the booking plugin.
 

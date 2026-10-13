@@ -1,36 +1,46 @@
 """Check the slots and render the story. Publishing happens in publish_story.py.
 
-Each scheduled run starts 5 minutes before the post time:
+Post times (Skopje):
+  morning story    check 19:25, post 19:30, for TOMORROW (morning slots plus slots after 15:00)
+  afternoon story  check 09:55, post 10:00, for TODAY (slots after 15:00)
 
-  19:25 -> check the slots for TOMORROW's morning sessions, render, post at 19:30
-  09:55 -> check the slots for TODAY's afternoon sessions, render, post at 10:00
+A run is started in one of three ways:
 
-The slots are read fresh from the booking calendar at the check time. The
-publish step (publish_story.py) waits for the post time after the image is
-committed, so the story goes out at 19:30 or 10:00 with data that is about
-5 minutes old.
+  external trigger  FORCE_KIND=morning|afternoon, no date. An outside scheduler
+                    (cron-job.org) starts the workflow at 19:25 / 09:55. The date
+                    is worked out here.
+  GitHub schedule   no FORCE_* values. A backup: GitHub's own timer often starts
+                    runs late or not at all, so its window is wide and a late
+                    run still checks fresh and posts.
+  manual            FORCE_KIND and FORCE_DATE. Checks, renders and publishes at
+                    once for that date.
 
-GitHub cron runs in UTC and does not follow daylight saving, so the workflow
-fires at both possible UTC times. This script exits quietly unless the Skopje
-time falls in a check window. The windows are wide enough to allow for GitHub
-starting a run a few minutes late.
+The first two skip when published/<date>-<kind>.txt exists, so a story is never
+posted twice. The slots are always read fresh from the booking calendar here,
+right before the image is drawn.
 
-Manual run: FORCE_KIND=morning FORCE_DATE=2026-10-13 python run_daily.py
-A manual run checks, renders and publishes at once, without waiting for a post time.
-Writes the image to docs/stories/ and prints `file=<path>` for the workflow.
+Writes the image to docs/stories/ and prints `file`, `kind` and `marker` for the workflow.
 """
 import os
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import fetch_availability
 import make_story
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STORIES_DIR = os.path.join(HERE, "docs", "stories")
+PUBLISHED_DIR = os.path.join(HERE, "published")
 
 # Post time for each story (Skopje). The check runs about 5 minutes before it.
 POST_TIME = {"morning": (19, 30), "afternoon": (10, 0)}
+
+# When a run may produce each story (Skopje, start inclusive, end exclusive).
+# The GitHub-schedule window starts at the check time and stays open for late runs.
+SCHEDULE_WINDOW = {"morning": (time(19, 20), time(21, 30)), "afternoon": (time(9, 50), time(12, 0))}
+# An external trigger names the kind itself. It may not run early (the publish
+# step waits 15 minutes at most) or on the wrong day.
+TRIGGER_WINDOW = {"morning": (time(19, 15), time(23, 59, 59)), "afternoon": (time(9, 45), time(15, 0))}
 
 
 def skopje_now(utc_now):
@@ -48,32 +58,59 @@ def _last_sunday(year, month):
     return d - timedelta(days=(d.weekday() + 1) % 7)
 
 
-def due_story(now):
-    """Return (day, kind) if a check is due at this Skopje time, else None.
+def _in_window(now, window):
+    start, end = window
+    return start <= now.time().replace(tzinfo=None) < end
 
-    The morning check starts at 19:20 (for tomorrow), the afternoon check at 09:50 (for today).
-    """
-    if now.hour == 19 and now.minute >= 20:
-        return now.date() + timedelta(days=1), "morning"
-    if now.hour == 9 and now.minute >= 50:
-        return now.date(), "afternoon"
+
+def class_day(now, kind):
+    """The morning story is for tomorrow, the afternoon story for today."""
+    return now.date() + timedelta(days=1) if kind == "morning" else now.date()
+
+
+def due_story(now):
+    """Return (day, kind) if the GitHub schedule should produce a story at this Skopje time, else None."""
+    for kind, window in SCHEDULE_WINDOW.items():
+        if _in_window(now, window):
+            return class_day(now, kind), kind
     return None
 
 
-def main():
-    forced_kind = os.environ.get("FORCE_KIND")
-    forced_date = os.environ.get("FORCE_DATE")
-    now = skopje_now(datetime.now(timezone.utc))
+def resolve_target(now, forced_kind, forced_date):
+    """Return ((day, kind, manual), None) for this run, or (None, reason) when there is nothing to do."""
+    if forced_kind and forced_kind not in POST_TIME:
+        return None, f"Unknown kind {forced_kind!r}."
     if forced_kind and forced_date:
-        day, kind = date.fromisoformat(forced_date), forced_kind
-        scheduled = False
-    else:
-        due = due_story(now)
-        if due is None:
-            print("Not a check time in Skopje; nothing to do.")
-            return 0
-        day, kind = due
-        scheduled = True
+        return (date.fromisoformat(forced_date), forced_kind, True), None
+    if forced_kind:
+        if not _in_window(now, TRIGGER_WINDOW[forced_kind]):
+            return None, f"{now.strftime('%H:%M')} Skopje is outside the {forced_kind} story's hours; nothing to do."
+        return (class_day(now, forced_kind), forced_kind, False), None
+    due = due_story(now)
+    if due is None:
+        return None, "Not a posting time in Skopje; nothing to do."
+    return (due[0], due[1], False), None
+
+
+def marker_name(day, kind):
+    return f"{day.isoformat()}-{kind}"
+
+
+def already_published(day, kind):
+    return os.path.exists(os.path.join(PUBLISHED_DIR, marker_name(day, kind) + ".txt"))
+
+
+def main():
+    now = skopje_now(datetime.now(timezone.utc))
+    target, reason = resolve_target(now, os.environ.get("FORCE_KIND"), os.environ.get("FORCE_DATE"))
+    if target is None:
+        print(reason)
+        return 0
+    day, kind, manual = target
+
+    if not manual and already_published(day, kind):
+        print(f"The {kind} story for {day.isoformat()} is already published; nothing to do.")
+        return 0
 
     calendar = fetch_availability.fetch_calendar()
     if not fetch_availability.is_open_day(calendar, day):
@@ -99,12 +136,13 @@ def main():
     rel = os.path.relpath(out_path, HERE)
     print(f"Rendered {rel} with {len(slots)} slot(s).")
 
-    # The publish step waits for the post time, after the image is committed.
+    # The publish step waits for the post time (not on manual runs), after the image is committed.
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
         with open(github_output, "a") as f:
             f.write(f"file={rel}\n")
-            f.write(f"kind={kind if scheduled else ''}\n")
+            f.write(f"kind={'' if manual else kind}\n")
+            f.write(f"marker={marker_name(day, kind)}\n")
     return 0
 
 

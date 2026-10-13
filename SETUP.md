@@ -44,11 +44,29 @@ Do not put the token in code or in this repo.
 1. In GitHub: **Actions → Daily availability story → Run workflow**.
 2. Choose `kind` = `morning`, a `date` that has free morning slots, and `publish_delay_minutes` (0 publishes at once; 5 waits five minutes after the slots are checked).
 3. The run commits the image to `docs/stories/`, then publishes it. Check the story in the Instagram app.
-4. If the run passes, it will repeat every day: checks at 19:25 and 09:55, posts at 19:30 and 10:00.
+4. A run with a `date` publishes at once and ignores the schedule. Leave `date` empty only to stand in for the scheduled story.
 
 ## What runs when
 
-GitHub cron uses UTC and does not know about daylight saving. The workflow fires at both UTC times for each check (19:25 and 09:55), and `run_daily.py` exits quietly unless the Skopje hour matches. GitHub can also start scheduled runs a few minutes late.
+GitHub's own timer is not reliable: it has started runs hours late and skipped others. So an outside scheduler starts the workflow at the exact time, and GitHub's timer is only a backup.
+
+1. **cron-job.org** starts the workflow at 19:25 (`kind` = `morning`) and 09:55 (`kind` = `afternoon`), Skopje time.
+2. The run reads the live booking calendar, draws the image, and commits it.
+3. The publish step waits for 19:30 or 10:00 and publishes. It then writes `published/<date>-<kind>.txt`.
+4. **Backup:** GitHub's timer fires at the same time and again one and two hours later. A run that finds the marker does nothing. If the story isn't out yet, the late run checks fresh and posts.
+
+## 4. Set up cron-job.org
+
+1. **GitHub token.** On github.com: Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token. Repository access: *Only select repositories* → `wereform-story`. Repository permissions: **Actions: Read and write**. Nothing else. Note the expiry date; the jobs stop working when the token expires.
+2. **Account.** Create a free account on cron-job.org.
+3. **Two jobs**, both with these settings:
+   - URL: `https://api.github.com/repos/bojanpavlov/wereform-story/actions/workflows/daily-story.yml/dispatches`
+   - Request method: `POST`
+   - Headers: `Accept: application/vnd.github+json`, `Authorization: Bearer <the token>`, `X-GitHub-Api-Version: 2022-11-28`, `Content-Type: application/json`
+   - Time zone: `Europe/Skopje`
+   - Morning job: every day at 19:25, body `{"ref":"main","inputs":{"kind":"morning"}}`
+   - Afternoon job: every day at 09:55, body `{"ref":"main","inputs":{"kind":"afternoon"}}`
+4. A successful call returns HTTP 204. Turn on failure notifications in cron-job.org.
 
 ## Settings to check
 

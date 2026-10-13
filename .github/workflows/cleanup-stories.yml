@@ -9,9 +9,10 @@ on:
 permissions:
   contents: write
 
-# Share the group with the daily story job so the two never push at the same time.
+# Its own group: sharing one with the daily story job would let a waiting
+# cleanup run cancel a waiting story run.
 concurrency:
-  group: daily-story
+  group: story-cleanup
   cancel-in-progress: false
 
 jobs:
@@ -31,12 +32,13 @@ jobs:
 
       - name: Commit removals
         run: |
-          if [ -z "$(git status --porcelain docs/stories)" ]; then
+          if [ -z "$(git status --porcelain docs/stories published)" ]; then
             echo "No changes to commit."
             exit 0
           fi
           git config user.name "wereform-story bot"
           git config user.email "actions@users.noreply.github.com"
-          git add -A docs/stories
-          git commit -m "Remove story images older than 24 hours"
+          git add -A docs/stories published
+          git commit -m "Remove old story images and markers"
+          git pull --rebase
           git push
